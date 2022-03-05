@@ -1,2 +1,3 @@
 */*.csv
 data/parana.rds
+.DS_Store
