@@ -50,6 +50,7 @@ shiny::shinyServer(function(input, output, session) {
         }) %...>%
             result_val()
 
+        # Return something other than the promise so shiny remains responsive
         NULL
     })
 
@@ -97,6 +98,7 @@ shiny::shinyServer(function(input, output, session) {
         }) %...>%
             result_plot()
 
+        # Return something other than the promise so shiny remains responsive
         NULL
     })
 
