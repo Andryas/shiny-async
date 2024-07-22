@@ -21,20 +21,23 @@ shiny::shinyServer(function(input, output, session) {
 
     tb_cities_distance <- eventReactive(input$compute, {
         req(input$cities)
-        
+
         if (length(input$cities) > 2) {
             tb_cities_distance <- tb_dis |>
                 dplyr::filter(start_city %in% input$cities) |>
                 select(start_city, input$cities) |>
                 arrange(start_city)
 
-            tb_cities_distance <- tb_cities_distance[, c("start_city", tb_cities_distance$start_city)]
+            tb_cities_distance <- tb_cities_distance |>
+                dplyr::select(
+                    start_city,
+                    !!tb_cities_distance$start_city
+                )
 
             tb_cities_distance
         } else {
             NULL
         }
-
     })
 
     observe({
@@ -42,15 +45,24 @@ shiny::shinyServer(function(input, output, session) {
 
         tb <- tb_cities_distance()
         result_val(NULL)
-        waiter_show(id = "cities_results_spinner", html = waiter::spin_3(), color = waiter::transparent(.5))
-        waiter_show(id = "cities_plot_spinner", html = waiter::spin_3(), color = waiter::transparent(.5))
+        waiter_show(
+            id = "cities_results_spinner",
+            html = waiter::spin_3(),
+            color = waiter::transparent(.5)
+        )
+        waiter_show(
+            id = "cities_plot_spinner",
+            html = waiter::spin_3(),
+            color = waiter::transparent(.5)
+        )
 
         future_promise({
             tsp_naivy(tb)
         }) %...>%
             result_val()
 
-        # Return something other than the promise so shiny remains responsive
+        # Return something other than the promise
+        # so shiny remains responsive
         NULL
     })
 
@@ -59,38 +71,62 @@ shiny::shinyServer(function(input, output, session) {
 
         d <- result_val() |>
             arrange(cost)
-        
+
         plots <- list()
-        
+
         future_promise({
             library(sf)
 
             for (i in 1:nrow(d)) {
                 map <- d[i, ]
 
-                map2 <- tibble::as_tibble(tb_map) |> 
+                routes <- simplify(strsplit(map$routes, ";"))
+
+                map2 <- tibble::as_tibble(tb_map) |>
                     left_join(
-                        tibble(name_muni = simplify(strsplit(map$routes, ";"))) |>
+                        tibble(name_muni = routes) |>
                             mutate(direction = 1:n(), fill = "1"),
                         by = "name_muni"
                     ) |>
                     mutate(fill = replace_na(fill, "0"))
 
+                title <- paste0(
+                    "Path traveled: ",
+                    formatC(map$cost / 1000,
+                        format = "f",
+                        big.mark = ",",
+                        digits = 2
+                    ),
+                    " km"
+                )
+
                 p <- map2 |>
-                       ggplot() +
-                       geom_sf(aes(geometry = geom, fill = fill)) +
-                       geom_path(
-                           data = map2 |> filter(!is.na(direction)) |> arrange(direction),
-                           aes(x = longitude, y = latitude)
-                       ) +
-                       geom_point(
-                           data = map2 |> filter(!is.na(direction) & direction == 1),
-                           aes(x = longitude, y = latitude), size = 3
-                       ) +
-                       theme_minimal() +
-                       theme(legend.position = "none") +
-                       scale_fill_manual(values = c("#834d29", "#251ac5")) +
-                       labs(x = "", y = "", title = paste0("Path traveled: ", formatC(map$cost / 1000, format = "f", big.mark = ",", digits = 2), " km"))
+                    ggplot() +
+                    geom_sf(aes(geometry = geom, fill = fill)) +
+                    geom_path(
+                        data = map2 |>
+                            filter(!is.na(direction)) |>
+                            arrange(direction),
+                        aes(x = longitude, y = latitude)
+                    ) +
+                    geom_point(
+                        data = map2 |>
+                            filter(
+                                !is.na(direction) & 
+                                direction == 1
+                            ),
+                        aes(x = longitude, y = latitude), size = 3
+                    ) +
+                    theme_minimal() +
+                    theme(legend.position = "none") +
+                    scale_fill_manual(
+                        values = c("#834d29", "#251ac5")
+                    ) +
+                    labs(
+                        x = "",
+                        y = "",
+                        title = title
+                    )
                 plots <- append(plots, list(p))
             }
 
@@ -98,7 +134,8 @@ shiny::shinyServer(function(input, output, session) {
         }) %...>%
             result_plot()
 
-        # Return something other than the promise so shiny remains responsive
+        # Return something other than the promise so 
+        # shiny remains responsive
         NULL
     })
 
@@ -109,11 +146,11 @@ shiny::shinyServer(function(input, output, session) {
 
         fluidRow(
             sliderInput(
-                inputId = "cities_routes_plot", 
+                inputId = "cities_routes_plot",
                 label = "",
-                min = 1, 
-                max = length(result_plot()), 
-                value = 1, 
+                min = 1,
+                max = length(result_plot()),
+                value = 1,
                 step = 1,
                 animate = animationOptions(1000)
             )
@@ -128,28 +165,29 @@ shiny::shinyServer(function(input, output, session) {
     output$cities_distance <- renderDT({
         req(tb_cities_distance())
 
-        waiter_show(id = "cities_distance", html = waiter::spin_3(), color = waiter::transparent(.5))
+        waiter_show(
+            id = "cities_distance", 
+            html = waiter::spin_3(), 
+            color = waiter::transparent(.5)
+        )
 
         tb_cities_distance() |>
             datatable(
                 rownames = FALSE,
                 options = list(
-                    dom = 't'
+                    dom = "t"
                 )
             )
     })
 
     output$cities_results <- renderDT({
         req(result_val())
-        
+
         waiter_hide("cities_results_spinner")
 
-        result_val() |> 
+        result_val() |>
             datatable(
                 rownames = FALSE
             )
     })
-
-
-
 })
